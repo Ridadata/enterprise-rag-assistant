@@ -81,6 +81,23 @@ docker/               Container build files
    streamlit run app/streamlit_app.py
    ```
 
+## Development Checks
+
+Run the current local checks:
+
+```bash
+python -m pytest -q
+python -m compileall api app ingestion retrieval generation tests
+```
+
+Preview the synthetic JSONL ingestion without writing to the database:
+
+```bash
+python -m ingestion.pipelines.ingest_jsonl data/synthetic/sample_documents.jsonl
+```
+
+The current `/ask` implementation uses local keyword retrieval over `data/synthetic/sample_documents.jsonl` and an extractive answer generator. This is intentional for the first vertical slice; pgvector embeddings and LLM-backed generation are the next backend milestones.
+
 ## Current Milestone
 
 The first milestone is a working vertical slice:
@@ -97,4 +114,3 @@ The first milestone is a working vertical slice:
 ## Source Plan
 
 The detailed project blueprint is kept in [project_plan.md](project_plan.md).
-

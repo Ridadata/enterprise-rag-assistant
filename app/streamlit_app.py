@@ -4,7 +4,7 @@ import streamlit as st
 
 API_URL = "http://localhost:8000/ask"
 
-st.set_page_config(page_title="Enterprise RAG Assistant", page_icon="?", layout="wide")
+st.set_page_config(page_title="Enterprise RAG Assistant", page_icon=":material/search:", layout="wide")
 
 st.title("Enterprise Data & IT Knowledge Assistant")
 
@@ -42,4 +42,3 @@ if question:
             error = f"API request failed: {exc}"
             st.error(error)
             st.session_state.messages.append({"role": "assistant", "content": error})
-
