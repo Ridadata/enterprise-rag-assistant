@@ -1,7 +1,7 @@
 [project]
 name = "enterprise-rag-assistant"
 version = "0.1.0"
-description = "Enterprise IT and data knowledge RAG assistant with FastAPI, Streamlit, PostgreSQL, and pgvector."
+description = "Enterprise IT and data knowledge RAG assistant with FastAPI, Next.js, PostgreSQL, and pgvector."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
@@ -12,9 +12,6 @@ dependencies = [
     "psycopg[binary]>=3.2.0",
     "sqlalchemy>=2.0.0",
     "pgvector>=0.3.0",
-    "streamlit>=1.37.0",
-    "httpx>=0.27.0",
-    "python-dotenv>=1.0.0",
 ]
 
 [project.optional-dependencies]

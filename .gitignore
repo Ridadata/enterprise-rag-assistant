@@ -20,3 +20,8 @@ data/evaluation/results/
 *.sqlite
 *.db
 
+# Next.js frontend (web/)
+web/node_modules/
+web/.next/
+web/.env.local
+web/*.tsbuildinfo

@@ -7,7 +7,9 @@ services:
       POSTGRES_USER: rag_user
       POSTGRES_PASSWORD: rag_password
     ports:
-      - "5432:5432"
+      # Host port 5433 -> container 5432: a native PostgreSQL Windows service commonly
+      # occupies host 5432, silently intercepting connections meant for this container.
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./database/schema.sql:/docker-entrypoint-initdb.d/001_schema.sql:ro
@@ -16,6 +18,45 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    container_name: enterprise-rag-api
+    env_file: .env
+    environment:
+      # Container-to-container traffic uses the "db" service name + its internal port,
+      # not the host-facing DATABASE_URL/port in .env (which points at localhost:5433,
+      # only meaningful from the host machine).
+      DATABASE_URL: postgresql+psycopg://rag_user:rag_password@db:5432/enterprise_rag
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.app
+    container_name: enterprise-rag-app
+    environment:
+      # Container-to-container traffic, not the host-facing localhost URL a browser on
+      # the host would use -- this is read server-side only (Next.js Route Handlers),
+      # never exposed to the client bundle.
+      NEXUS_API_BASE_URL: http://api:8000
+      NEXUS_API_KEY: ${API_KEY}
+    ports:
+      - "3000:3000"
+    depends_on:
+      api:
+        condition: service_healthy
 
 volumes:
   postgres_data:

@@ -1,0 +1,39 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Third-party dependencies are installed from an explicit list (duplicating
+# pyproject.toml's [project.dependencies] + the "embeddings" extra -- there's no lockfile
+# in this project to generate a requirements.txt from) *before* the source tree (including
+# pyproject.toml itself) is copied in. That keeps this layer's cache valid across
+# source/pyproject-only changes, so a code edit or version bump doesn't force
+# re-downloading sentence-transformers/torch on every rebuild.
+RUN pip install --no-cache-dir \
+    "setuptools>=68" \
+    "wheel" \
+    "fastapi>=0.115.0" \
+    "uvicorn[standard]>=0.30.0" \
+    "pydantic>=2.8.0" \
+    "pydantic-settings>=2.4.0" \
+    "psycopg[binary]>=3.2.0" \
+    "sqlalchemy>=2.0.0" \
+    "pgvector>=0.3.0" \
+    "sentence-transformers>=3.0.0"
+
+COPY pyproject.toml ./
+COPY api ./api
+COPY database ./database
+COPY evaluation ./evaluation
+COPY generation ./generation
+COPY ingestion ./ingestion
+COPY monitoring ./monitoring
+COPY retrieval ./retrieval
+COPY data ./data
+
+# --no-build-isolation: use the setuptools/wheel already installed above instead of
+# downloading a fresh isolated PEP 517 build environment for this trivial build.
+RUN pip install --no-cache-dir --no-deps --no-build-isolation .
+
+EXPOSE 8000
+
+CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]
