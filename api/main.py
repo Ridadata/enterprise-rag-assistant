@@ -5,7 +5,7 @@ from api.routes.ask import router as ask_router
 from api.routes.corpus import router as corpus_router
 
 app = FastAPI(
-    title="Enterprise Data & IT Knowledge RAG Assistant",
+    title="Nexus — Enterprise Knowledge Platform",
     version="0.1.0",
     description="Grounded question answering over enterprise IT and data knowledge.",
 )

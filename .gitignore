@@ -19,8 +19,11 @@ data/raw/*
 data/evaluation/results/
 
 *.log
+runtime/
 *.sqlite
 *.db
+
+*.egg-info/
 
 # Next.js frontend (web/)
 web/node_modules/

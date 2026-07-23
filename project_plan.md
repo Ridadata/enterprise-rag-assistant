@@ -1,4 +1,9 @@
-# Enterprise Data & IT Knowledge RAG Assistant
+# Nexus (originally planned as "Enterprise Data & IT Knowledge RAG Assistant") — Project Plan
+
+_This is the original planning document written before the product was named Nexus. Its
+content is kept as a historical record of the initial blueprint and is not updated to
+match later implementation decisions -- see `README.md` and `docs/architecture.md` for the
+current, accurate state of the system._
 
 ## 1. Project Vision
 

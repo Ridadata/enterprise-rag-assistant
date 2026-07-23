@@ -1,7 +1,11 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
 [project]
-name = "enterprise-rag-assistant"
+name = "nexus"
 version = "0.1.0"
-description = "Enterprise IT and data knowledge RAG assistant with FastAPI, Next.js, PostgreSQL, and pgvector."
+description = "Nexus -- Enterprise Knowledge Platform. Grounded question answering over enterprise IT and data knowledge, built with FastAPI, Next.js, PostgreSQL, and pgvector."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
@@ -25,6 +29,21 @@ dev = [
     # needed on networks with a TLS-inspecting corporate proxy (e.g. HuggingFace Hub
     # downloads for the embeddings extra otherwise fail with CERTIFICATE_VERIFY_FAILED).
     "pip-system-certs>=4.0; sys_platform == 'win32'",
+]
+
+[tool.setuptools.packages.find]
+# Explicit allow-list: setuptools' flat-layout auto-discovery otherwise errors out on
+# ambiguity, since directories like data/, docs/, and web/ (the Next.js frontend, its own
+# npm project) all look like candidate top-level packages to it.
+include = [
+    "api*",
+    "database*",
+    "evaluation*",
+    "generation*",
+    "ingestion*",
+    "monitoring*",
+    "retrieval*",
+    "scripts*",
 ]
 
 [tool.ruff]
