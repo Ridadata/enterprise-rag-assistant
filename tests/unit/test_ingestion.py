@@ -2,7 +2,12 @@ from pathlib import Path
 
 import pytest
 
-from ingestion.pipelines.ingest_jsonl import summarize_ingestion, validate_document
+from ingestion.pipelines.ingest_jsonl import (
+    export_processed_chunks,
+    iter_chunk_records,
+    summarize_ingestion,
+    validate_document,
+)
 
 
 SAMPLE_DATASET = Path("data/synthetic/sample_documents.jsonl")
@@ -40,3 +45,20 @@ def test_validate_document_rejects_non_list_tags() -> None:
     with pytest.raises(ValueError, match="tags"):
         validate_document(document)
 
+
+def test_iter_chunk_records_can_include_embeddings() -> None:
+    records = iter_chunk_records(SAMPLE_DATASET, include_embeddings=True)
+
+    assert records
+    assert records[0]["embedding_model"] == "hashing-384-v1"
+    assert len(records[0]["embedding"]) == 384
+
+
+def test_export_processed_chunks_writes_jsonl(tmp_path: Path) -> None:
+    output_path = tmp_path / "chunks.jsonl"
+
+    result = export_processed_chunks(SAMPLE_DATASET, output_path, include_embeddings=False)
+
+    assert result["chunk_count"] == 20
+    assert output_path.exists()
+    assert len(output_path.read_text(encoding="utf-8").splitlines()) == 20
