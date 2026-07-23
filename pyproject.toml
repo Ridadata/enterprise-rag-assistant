@@ -21,6 +21,10 @@ embeddings = [
 dev = [
     "pytest>=8.3.0",
     "ruff>=0.6.0",
+    # Makes Python trust the OS certificate store instead of its own bundled one --
+    # needed on networks with a TLS-inspecting corporate proxy (e.g. HuggingFace Hub
+    # downloads for the embeddings extra otherwise fail with CERTIFICATE_VERIFY_FAILED).
+    "pip-system-certs>=4.0; sys_platform == 'win32'",
 ]
 
 [tool.ruff]
