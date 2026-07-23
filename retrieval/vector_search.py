@@ -1,14 +1,23 @@
+import logging
 import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from database.settings import get_settings
 from ingestion.chunking.simple_chunker import chunk_text
 from ingestion.loaders.jsonl_loader import load_jsonl
 from ingestion.pipelines.ingest_jsonl import validate_document
 
 
+logger = logging.getLogger(__name__)
+
+# Canonical set of filter keys accepted by any retrieval backend. The API layer
+# validates against this so unrecognized keys fail fast with a 422 instead of
+# silently matching nothing (local backend) or being ignored (postgres backend).
+ALLOWED_FILTER_KEYS = {"category", "department", "source_type", "access_level", "tags"}
+
 DEFAULT_DOCUMENT_PATH = (
-    Path(__file__).resolve().parents[1] / "data" / "synthetic" / "sample_documents.jsonl"
+    Path(__file__).resolve().parents[1] / "data" / "synthetic" / "enterprise_knowledge_base.jsonl"
 )
 
 STOP_WORDS = {
@@ -39,6 +48,10 @@ STOP_WORDS = {
 }
 
 
+class RetrievalBackendUnavailable(RuntimeError):
+    """Raised when RAG_RETRIEVAL_BACKEND is pinned to "postgres" and it fails (no fallback)."""
+
+
 @dataclass(frozen=True)
 class RetrievedChunk:
     chunk_id: str
@@ -46,6 +59,7 @@ class RetrievedChunk:
     title: str
     content: str
     score: float
+    source_type: str = ""
 
 
 def _tokens(text: str) -> set[str]:
@@ -88,14 +102,76 @@ def _score_chunk(question_terms: set[str], document: dict, content: str) -> floa
     return min((len(overlap) / len(question_terms)) + title_bonus + tag_bonus, 1.0)
 
 
+def _diversify_chunks(candidates: list[RetrievedChunk], top_k: int) -> list[RetrievedChunk]:
+    sorted_candidates = sorted(candidates, key=lambda chunk: chunk.score, reverse=True)
+    selected: list[RetrievedChunk] = []
+    seen_source_types: set[str] = set()
+
+    for candidate in sorted_candidates:
+        if candidate.source_type and candidate.source_type in seen_source_types:
+            continue
+        selected.append(candidate)
+        if candidate.source_type:
+            seen_source_types.add(candidate.source_type)
+        if len(selected) == top_k:
+            return selected
+
+    for candidate in sorted_candidates:
+        if candidate not in selected:
+            selected.append(candidate)
+        if len(selected) == top_k:
+            break
+    return selected
+
+
 def retrieve_relevant_chunks(
     question: str,
     filters: dict[str, str | list[str]] | None = None,
     top_k: int = 5,
     document_path: Path = DEFAULT_DOCUMENT_PATH,
-    min_score: float = 0.3,
+    min_score: float | None = None,
 ) -> list[RetrievedChunk]:
-    """Local keyword retrieval used before pgvector-backed vector search is wired."""
+    """Retrieve chunks using the configured backend, with local JSONL as the stable fallback."""
+    min_score = min_score if min_score is not None else get_settings().min_retrieval_score
+    backend = get_settings().rag_retrieval_backend.lower()
+    if backend in {"postgres", "auto"}:
+        try:
+            from retrieval.postgres_vector_search import retrieve_postgres_chunks
+
+            return retrieve_postgres_chunks(
+                question=question,
+                filters=filters,
+                top_k=top_k,
+                min_score=min_score,
+            )
+        except Exception as exc:
+            if backend == "postgres":
+                raise RetrievalBackendUnavailable(
+                    f"Postgres retrieval backend failed: {exc}"
+                ) from exc
+            logger.warning(
+                "Postgres retrieval backend failed; falling back to local keyword search.",
+                exc_info=True,
+            )
+
+    return retrieve_local_chunks(
+        question=question,
+        filters=filters,
+        top_k=top_k,
+        document_path=document_path,
+        min_score=min_score,
+    )
+
+
+def retrieve_local_chunks(
+    question: str,
+    filters: dict[str, str | list[str]] | None = None,
+    top_k: int = 5,
+    document_path: Path = DEFAULT_DOCUMENT_PATH,
+    min_score: float | None = None,
+) -> list[RetrievedChunk]:
+    """Local keyword retrieval backend (fallback when postgres hybrid search is unavailable)."""
+    min_score = min_score if min_score is not None else get_settings().min_retrieval_score
     question_terms = _tokens(question)
     candidates: list[RetrievedChunk] = []
 
@@ -104,7 +180,7 @@ def retrieve_relevant_chunks(
         if not _matches_filters(document, filters):
             continue
 
-        for chunk in chunk_text(document["content"]):
+        for chunk in chunk_text(document["content"], source_type=document["source_type"]):
             score = _score_chunk(question_terms, document, chunk.content)
             if score < min_score:
                 continue
@@ -115,7 +191,8 @@ def retrieve_relevant_chunks(
                     title=document["title"],
                     content=chunk.content,
                     score=round(score, 4),
+                    source_type=document["source_type"],
                 )
             )
 
-    return sorted(candidates, key=lambda chunk: chunk.score, reverse=True)[:top_k]
+    return _diversify_chunks(candidates, top_k)
