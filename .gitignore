@@ -11,7 +11,9 @@ htmlcov/
 .DS_Store
 Thumbs.db
 
-data/processed/
+data/processed/*
+!data/processed/.gitkeep
+!data/processed/sample_chunks.jsonl
 data/raw/*
 !data/raw/.gitkeep
 data/evaluation/results/
