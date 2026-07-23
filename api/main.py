@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 
+from api.routes.admin import router as admin_router
 from api.routes.ask import router as ask_router
+from api.routes.corpus import router as corpus_router
 
 app = FastAPI(
     title="Enterprise Data & IT Knowledge RAG Assistant",
@@ -9,6 +11,8 @@ app = FastAPI(
 )
 
 app.include_router(ask_router)
+app.include_router(corpus_router)
+app.include_router(admin_router)
 
 
 @app.get("/health")
