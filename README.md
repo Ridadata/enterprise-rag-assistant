@@ -116,34 +116,19 @@ in your actual knowledge base, and never fabricates a citation:
 <img src="docs/screenshots/search-hero-dark.png" width="49%" alt="Nexus search page, empty state, dark theme" />
 <img src="docs/screenshots/search-hero-light.png" width="49%" alt="Nexus search page, empty state, light theme" />
 
-**A grounded answer, with citations and suggested follow-ups**
-
-<img src="docs/screenshots/search-conversation.png" width="80%" alt="Nexus conversation with citations and follow-up questions" />
-
 </div>
 
-<details>
-<summary><b>More screenshots</b> — citation detail, Knowledge Base, Admin Analytics, Settings, mobile</summary>
-
-<br />
-
-| | |
-|---|---|
-| **Citation detail dialog** | **Knowledge Base overview** |
-| <img src="docs/screenshots/citation-dialog.png" width="100%" /> | <img src="docs/screenshots/knowledge-base.png" width="100%" /> |
-| **Admin Analytics dashboard** | **Settings** |
-| <img src="docs/screenshots/admin-analytics.png" width="100%" /> | <img src="docs/screenshots/settings.png" width="100%" /> |
-
-**Mobile (390×844)**
-
-<img src="docs/screenshots/mobile-search.png" width="30%" alt="Nexus search page on mobile" />
-
-</details>
-
 > [!TIP]
-> All screenshots above are captured directly from the live application against a real
-> ingested corpus — not mockups. A demo GIF is a natural next addition; none is committed
-> yet, so none is claimed here.
+> Screenshots above are captured directly from the live application against a real
+> ingested corpus — not mockups.
+
+### 🎥 Demo Video
+
+<div align="center">
+
+> _Demo video coming soon._
+
+</div>
 
 <br />
 
@@ -191,27 +176,6 @@ flowchart LR
     RAGS -- "best-effort logging" --> DB
     HYB <-- "cosine + full-text search" --> DB
 ```
-
-<details>
-<summary><b>Ingestion pipeline</b> (click to expand)</summary>
-
-```mermaid
-flowchart LR
-    SRC["JSONL source documents"] --> VAL["validate"]
-    VAL --> CHK{"checksum + embedding\nmodel unchanged?"}
-    CHK -- "yes, skip" --> DONE(["no work done"])
-    CHK -- "no" --> CHUNK["chunk\n(per-source-type profile)"]
-    CHUNK --> EMB["embed\n(sentence-transformers)"]
-    EMB --> STORE[("PostgreSQL + pgvector")]
-```
-
-`ingestion/pipelines/load_to_postgres.py` fetches every document's stored checksum and
-already-embedded status *before* touching a single row, so re-running ingestion on every
-app startup only ever does real work for documents that are new, changed, or embedded
-under a previously different `EMBEDDING_PROVIDER`. `--reset` bypasses this for a full
-rebuild.
-
-</details>
 
 <details>
 <summary><b>Request sequence for a conversational follow-up</b> (click to expand)</summary>
@@ -463,27 +427,18 @@ started).
 
 ## 🔬 The RAG Pipeline, Explained
 
-1. **Auth.** `api/security.py`'s `require_api_key` rejects unauthenticated requests (401)
-   before any retrieval or generation work happens.
-2. **Query rewriting (conditional).** If the request carries prior turns, a cheap
-   deterministic heuristic decides whether the new question actually looks like a
-   follow-up. A self-contained question skips rewriting entirely; a real follow-up is
-   condensed against history into a standalone query under a tight timeout budget.
-3. **Hybrid retrieval.** The (possibly rewritten) query runs against pgvector cosine
-   similarity **fused with** PostgreSQL full-text search. If Postgres is unreachable, it
-   falls back to local in-memory keyword scoring over the corpus (logged as a warning).
-4. **Reranking (conditional).** A larger candidate pool is over-fetched and re-scored by
-   a cross-encoder — a second, more precise pass than the first-stage score, and the main
-   reason a follow-up's retrieval stays on-topic.
-5. **Generation.** A prompt is built from the retrieved chunks plus recent history and
-   sent through the provider fallback chain. Transient failures (rate limits, timeouts,
-   5xxs) retry with backoff before moving to the next provider.
-6. **Response.** The answer, confidence (derived from the top reranked score — **not**
-   LLM self-assessment), limitations, next step, up to three suggested follow-up
-   questions, the actual retrieval query used, and source citations are all returned in
-   one response.
-7. **Logging.** The query, retrieved chunks, and answer (with model/tokens/cost/latency)
-   are logged to Postgres — best-effort; a logging failure never breaks the response.
+**Auth → rewrite (conditional) → hybrid retrieval → rerank (conditional) → generate → respond → log.**
+
+- A question with prior turns is rewritten into a standalone query only if it actually
+  looks like a follow-up — a self-contained question skips straight to retrieval.
+- Retrieval fuses pgvector cosine similarity with PostgreSQL full-text search, falling
+  back to local in-memory keyword search if Postgres is unreachable.
+- An over-fetched candidate pool is reranked by a cross-encoder for precision beyond the
+  first-stage score.
+- The final response's **confidence is derived from the reranked score, not LLM
+  self-assessment**, and includes citations, up to three suggested follow-ups, and the
+  actual retrieval query used — all from one generation call, logged to Postgres
+  best-effort.
 
 Full detail, file-by-file: [`docs/architecture.md`](docs/architecture.md).
 
@@ -704,27 +659,6 @@ Google periodically retires dated Gemini model snapshots. This project pins
 `GEMINI_MODEL=gemini-flash-latest` (a rolling alias) specifically to avoid that — if
 you've overridden it to a dated model name, switch back to `gemini-flash-latest` or
 another current model from Google's docs.
-
-</details>
-
-<details>
-<summary><b>Answers are slow or I'm hitting free-tier rate limits</b></summary>
-
-Free tiers on Gemini/Groq/OpenRouter enforce requests-per-minute limits. The provider
-chain already retries transient rate limits with backoff before moving to the next
-provider, so occasional slowness under load is expected behavior, not a bug. For local,
-zero-latency testing, unset all LLM keys — the chain falls through to the offline mock
-provider immediately.
-
-</details>
-
-<details>
-<summary><b>Docker Desktop fails to pull images with a credential-store error</b></summary>
-
-This is a known Docker Desktop for Windows issue unrelated to this project — it usually
-means the `credsStore` entry in `~/.docker/config.json` points at a helper binary that
-isn't on `PATH`. Removing that key (Docker will fall back to plaintext storage locally)
-or reinstalling Docker Desktop resolves it.
 
 </details>
 
