@@ -126,7 +126,10 @@ in your actual knowledge base, and never fabricates a citation:
 
 <div align="center">
 
-> _Demo video coming soon._
+<video src="docs/nexus_demo.mp4" controls width="720">
+  Your browser doesn't support inline video — download it directly:
+  <a href="docs/nexus_demo.mp4">docs/nexus_demo.mp4</a>
+</video>
 
 </div>
 
