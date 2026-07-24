@@ -1,5 +1,6 @@
 "use client";
 
+import { motion } from "framer-motion";
 import { Activity, Clock, HelpCircle, Coins, DollarSign, FileX } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatCard } from "@/components/shared/stat-card";
@@ -16,14 +17,18 @@ export default function AdminPage() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-6 p-6">
-      <div>
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3, ease: "easeOut" }}
+      >
         <h2 className="text-h2 text-foreground">Admin Analytics</h2>
         <p className="mt-1 text-body text-muted-foreground">
           Usage and quality metrics computed from logged queries and answers. Feedback and
           faithfulness/hallucination scoring aren&apos;t wired up yet, so those sections are
           intentionally omitted rather than shown empty.
         </p>
-      </div>
+      </motion.div>
 
       {isPending ? (
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
@@ -34,7 +39,12 @@ export default function AdminPage() {
       ) : data && !data.ok ? (
         <ErrorState result={data} />
       ) : data ? (
-        <>
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, ease: "easeOut" }}
+          className="space-y-6"
+        >
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
             <StatCard label="Total Queries" value={data.data.total_queries} icon={Activity} />
             <StatCard
@@ -123,7 +133,7 @@ export default function AdminPage() {
               <MostCitedTable documents={data.data.most_cited_documents} />
             </CardContent>
           </Card>
-        </>
+        </motion.div>
       ) : null}
     </div>
   );

@@ -26,7 +26,7 @@ export function SearchBox({ onSubmit, pending, large, placeholder }: SearchBoxPr
   return (
     <div
       className={cn(
-        "flex items-end gap-2 rounded-xl border border-input bg-card p-2 shadow-sm transition-shadow focus-within:ring-3 focus-within:ring-ring/50",
+        "flex items-end gap-2 rounded-xl border border-input bg-card p-2 shadow-card transition-shadow focus-within:ring-3 focus-within:ring-ring/50",
         large && "p-3",
       )}
     >
@@ -47,6 +47,7 @@ export function SearchBox({ onSubmit, pending, large, placeholder }: SearchBoxPr
         )}
       />
       <Button
+        variant="gradient"
         size="icon"
         disabled={value.trim().length < 3 || pending}
         onClick={submit}

@@ -1,5 +1,6 @@
 "use client";
 
+import { motion } from "framer-motion";
 import { FileText, Layers, Tags } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatCard } from "@/components/shared/stat-card";
@@ -13,12 +14,16 @@ export default function KnowledgePage() {
 
   return (
     <div className="mx-auto max-w-4xl space-y-6 p-6">
-      <div>
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3, ease: "easeOut" }}
+      >
         <h2 className="text-h2 text-foreground">Knowledge Base</h2>
         <p className="mt-1 text-body text-muted-foreground">
           A live snapshot of the corpus currently indexed for retrieval.
         </p>
-      </div>
+      </motion.div>
 
       {isPending ? (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -29,7 +34,12 @@ export default function KnowledgePage() {
       ) : data && !data.ok ? (
         <ErrorState result={data} />
       ) : data ? (
-        <>
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, ease: "easeOut" }}
+          className="space-y-6"
+        >
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <StatCard label="Documents" value={data.data.document_count} icon={FileText} />
             <StatCard label="Chunks" value={data.data.chunk_count} icon={Layers} />
@@ -48,7 +58,7 @@ export default function KnowledgePage() {
               <SourceTypeChart sourceTypes={data.data.source_types} />
             </CardContent>
           </Card>
-        </>
+        </motion.div>
       ) : null}
     </div>
   );

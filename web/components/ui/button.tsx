@@ -18,6 +18,10 @@ const buttonVariants = cva(
         destructive:
           "bg-destructive/10 text-destructive hover:bg-destructive/20 focus-visible:border-destructive/40 focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:hover:bg-destructive/30 dark:focus-visible:ring-destructive/40",
         link: "text-primary underline-offset-4 hover:underline",
+        // Reserved for a small number of flagship CTAs (e.g. the search submit button) --
+        // not a replacement for `default`, which stays the workhorse primary button.
+        gradient:
+          "bg-gradient-brand text-white shadow-[0_4px_16px_-4px_color-mix(in_oklab,var(--primary)_50%,transparent)] hover:brightness-110 hover:shadow-[0_6px_20px_-4px_color-mix(in_oklab,var(--primary)_60%,transparent)]",
       },
       size: {
         default:

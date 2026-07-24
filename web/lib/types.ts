@@ -15,10 +15,18 @@ export const ALLOWED_FILTER_KEYS: FilterKey[] = [
   "tags",
 ];
 
+/** One prior question/answer pair -- see api/schemas/qa.py's ConversationTurn for why
+ * history is sent by the client on every request rather than kept server-side. */
+export interface ConversationTurn {
+  question: string;
+  answer: string;
+}
+
 export interface AskRequest {
   question: string;
   user_id?: string;
   filters?: Partial<Record<FilterKey, string | string[]>>;
+  history?: ConversationTurn[];
 }
 
 export interface SourceCitation {
@@ -27,6 +35,7 @@ export interface SourceCitation {
   chunk_id: string;
   excerpt: string;
   score: number;
+  chunk_position: number;
 }
 
 export interface AskResponse {
@@ -37,6 +46,8 @@ export interface AskResponse {
   sources: SourceCitation[];
   latency_ms: number;
   model_name: string;
+  follow_up_questions: string[];
+  retrieval_query: string;
 }
 
 export interface CorpusSummary {

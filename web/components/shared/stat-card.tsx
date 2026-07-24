@@ -11,15 +11,25 @@ interface StatCardProps {
 
 export function StatCard({ label, value, icon: Icon, className }: StatCardProps) {
   return (
-    <Card className={className}>
+    <Card
+      className={cn(
+        "relative transition-all duration-200 hover:-translate-y-0.5 hover:shadow-glow",
+        className,
+      )}
+    >
+      <span className="absolute inset-x-0 top-0 h-0.5 bg-gradient-brand opacity-70" />
       <CardContent>
         <div className="flex items-center justify-between">
           <span className="text-label uppercase tracking-wide text-muted-foreground">
             {label}
           </span>
-          {Icon ? <Icon className="size-4 text-muted-foreground" /> : null}
+          {Icon ? (
+            <span className="flex size-6 items-center justify-center rounded-md bg-primary/10 text-primary">
+              <Icon className="size-3.5" />
+            </span>
+          ) : null}
         </div>
-        <div className="mt-1 font-mono text-h2 tabular-nums text-foreground">{value}</div>
+        <div className="mt-1.5 break-all font-mono text-h2 tabular-nums text-foreground">{value}</div>
       </CardContent>
     </Card>
   );

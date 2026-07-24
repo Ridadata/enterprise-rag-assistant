@@ -25,7 +25,7 @@ export function TopBar({ onOpenPalette }: { onOpenPalette: () => void }) {
   }, []);
 
   return (
-    <header className="flex h-14 items-center justify-between gap-4 border-b border-border px-4 sm:px-6">
+    <header className="glass sticky top-0 z-30 flex h-14 items-center justify-between gap-4 border-b border-border px-4 sm:px-6">
       <div className="flex items-center gap-2">
         <Button
           variant="ghost"

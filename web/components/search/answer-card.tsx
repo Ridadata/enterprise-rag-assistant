@@ -6,6 +6,7 @@ import { motion } from "framer-motion";
 import { Clock, Cpu } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { StatusBadge, type StatusLevel } from "@/components/shared/status-badge";
+import { cn } from "@/lib/utils";
 import type { AskResponse } from "@/lib/types";
 
 const CONFIDENCE_LEVEL: Record<string, StatusLevel> = {
@@ -14,14 +15,28 @@ const CONFIDENCE_LEVEL: Record<string, StatusLevel> = {
   low: "low",
 };
 
+const CONFIDENCE_ACCENT: Record<StatusLevel, string> = {
+  high: "before:bg-success",
+  medium: "before:bg-warning",
+  low: "before:bg-destructive",
+  neutral: "before:bg-muted-foreground",
+};
+
 export function AnswerCard({ response }: { response: AskResponse }) {
+  const level = CONFIDENCE_LEVEL[response.confidence] ?? "neutral";
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.25, ease: "easeOut" }}
     >
-      <Card>
+      <Card
+        className={cn(
+          "relative before:absolute before:inset-x-0 before:top-0 before:h-0.5 before:content-['']",
+          CONFIDENCE_ACCENT[level],
+        )}
+      >
         <CardContent className="space-y-3">
           <div className="flex items-center gap-2">
             <StatusBadge level={CONFIDENCE_LEVEL[response.confidence] ?? "neutral"}>

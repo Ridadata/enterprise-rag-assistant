@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { motion } from "framer-motion";
 import { Moon, Sun, Monitor, Wifi, WifiOff, Radar, Tag } from "lucide-react";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
@@ -31,7 +32,12 @@ export default function SettingsPage() {
   const retrievalBackend = adminSummary?.ok ? adminSummary.data.retrieval_backend : null;
 
   return (
-    <div className="mx-auto max-w-2xl space-y-6 p-6">
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3, ease: "easeOut" }}
+      className="mx-auto max-w-2xl space-y-6 p-6"
+    >
       <div>
         <h2 className="text-h2 text-foreground">Settings</h2>
         <p className="mt-1 text-body text-muted-foreground">
@@ -134,6 +140,6 @@ export default function SettingsPage() {
           </div>
         </CardContent>
       </Card>
-    </div>
+    </motion.div>
   );
 }
