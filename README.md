@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="images/nexus_logo.png" alt="Nexus — Enterprise Knowledge Platform" width="480" />
+# Nexus
 
 ### Grounded, citation-backed question answering over your organization's internal knowledge.
 
