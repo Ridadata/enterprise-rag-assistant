@@ -77,10 +77,9 @@ Screenshots are captured from the live application against a real ingested corpu
 
 ### Demo
 
-<video src="docs/nexus_demo.mp4" controls width="720">
-  Your browser doesn't support inline video playback — download it directly:
-  <a href="docs/nexus_demo.mp4">docs/nexus_demo.mp4</a>
-</video>
+A short walkthrough is available as a downloadable recording:
+[nexus_demo.mp4](https://github.com/Ridadata/enterprise-rag-assistant/releases/download/v1.0.0/nexus_demo.mp4)
+(also committed at [`docs/nexus_demo.mp4`](docs/nexus_demo.mp4)).
 
 ## Architecture
 
