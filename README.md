@@ -126,14 +126,17 @@ in your actual knowledge base, and never fabricates a citation:
 
 <div align="center">
 
-<video src="docs/nexus_demo.mp4" controls width="720">
-  Your browser doesn't support inline video — download it directly:
-  <a href="docs/nexus_
+## 🎥 Demo
 
-https://github.com/user-attachments/assets/18bb4971-37ef-41e1-a349-2be476f100b1
+<p align="center">
+  <a href="https://github.com/Ridadata/enterprise-rag-assistant/releases/download/v1.0.0/nexus_demo.mp4">
+    <img src="assets/demo-thumbnail.png" alt="Nexus Demo" width="900">
+  </a>
+</p>
 
-demo.mp4">docs/nexus_demo.mp4</a>
-</video>
+<p align="center">
+  <b>▶️ Click the image above to watch the full demo.</b>
+</p>
 
 </div>
 
