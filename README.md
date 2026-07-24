@@ -1,4 +1,6 @@
-<img src="images/nexus_logo.png" alt="Nexus" width="360" />
+<p align="center">
+  <img src="images/nexus_logo.png" alt="Nexus" width="360" />
+</p>
 
 # Nexus
 
@@ -7,9 +9,11 @@ Hybrid retrieval, cross-encoder reranking, and multi-provider LLM generation beh
 backend and a Next.js console, with an evaluation harness that measures retrieval quality
 rather than just asserting it.
 
-[![License](https://img.shields.io/github/license/Ridadata/enterprise-rag-assistant)](LICENSE)
-[![Last commit](https://img.shields.io/github/last-commit/Ridadata/enterprise-rag-assistant)](https://github.com/Ridadata/enterprise-rag-assistant/commits/main)
-[![Stars](https://img.shields.io/github/stars/Ridadata/enterprise-rag-assistant?style=flat)](https://github.com/Ridadata/enterprise-rag-assistant/stargazers)
+[![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)](pyproject.toml)
+[![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)](api/main.py)
+[![Next.js](https://img.shields.io/badge/Next.js-16-000000?logo=next.js&logoColor=white)](web/package.json)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-pgvector-4169E1?logo=postgresql&logoColor=white)](database/schema.sql)
+[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)](docker-compose.yml)
 
 ## Overview
 
