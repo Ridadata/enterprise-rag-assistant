@@ -1,97 +1,146 @@
-import logging
-from dataclasses import dataclass
+from collections.abc import Callable, Iterator
 
-from database.settings import get_settings
+from database.settings import Settings, get_settings
+from generation.providers.anthropic_provider import AnthropicProvider
+from generation.providers.base import LLMProvider, LLMResult
+from generation.providers.chain import ProviderChain
+from generation.providers.gemini_provider import GeminiProvider
+from generation.providers.mock_provider import MockProvider
+from generation.providers.openai_compatible_provider import OpenAICompatibleProvider
 
+# Priority order used when LLM_PROVIDERS="auto": free-tier-friendly providers first,
+# each included only if its API key is actually configured. Ollama is deliberately
+# excluded from "auto" -- it's a local server, not a hosted API, so there's no key
+# whose presence signals "the user wants this one"; opt in explicitly instead
+# (LLM_PROVIDERS=ollama,mock).
+_AUTO_ORDER = ["gemini", "groq", "openrouter", "openai", "anthropic"]
 
-logger = logging.getLogger(__name__)
-
-
-@dataclass(frozen=True)
-class LLMResult:
-    text: str
-    model_name: str
-    tokens_in: int | None
-    tokens_out: int | None
-    cost_estimate: float | None
-    is_extractive_fallback: bool
-
-
-def _estimate_tokens(text: str) -> int:
-    """~4 chars/token heuristic, consistent with ingestion/chunking/simple_chunker.py."""
-    return max(1, round(len(text) / 4)) if text else 0
+_KNOWN_PROVIDERS = frozenset({*_AUTO_ORDER, "ollama", "mock"})
 
 
-def _mock_generate(system_prompt: str, user_prompt: str, fallback_text: str) -> LLMResult:
-    del system_prompt, user_prompt  # the mock provider just echoes the extractive fallback
-    return LLMResult(
-        text=fallback_text,
-        model_name=get_settings().llm_model or "mock-grounded-answer",
-        tokens_in=_estimate_tokens(fallback_text),
-        tokens_out=_estimate_tokens(fallback_text),
-        cost_estimate=0.0,
-        is_extractive_fallback=True,
+def _provider_factory(
+    name: str, settings: Settings, *, timeout_seconds: float | None = None
+) -> Callable[[], LLMProvider]:
+    """Returns a zero-arg constructor for the named provider. The constructor itself
+    (not this dispatch) is where a missing API key raises -- see ProviderChain's
+    docstring for why that has to be lazy."""
+    timeout = timeout_seconds if timeout_seconds is not None else settings.llm_timeout_seconds
+    if name == "mock":
+        return lambda: MockProvider()
+    if name == "gemini":
+        return lambda: GeminiProvider(
+            api_key=settings.gemini_api_key,
+            model=settings.gemini_model,
+            timeout_seconds=timeout,
+        )
+    if name == "groq":
+        return lambda: OpenAICompatibleProvider(
+            name="groq",
+            api_key=settings.groq_api_key,
+            model=settings.groq_model,
+            base_url=settings.groq_base_url,
+            timeout_seconds=timeout,
+        )
+    if name == "openrouter":
+        return lambda: OpenAICompatibleProvider(
+            name="openrouter",
+            api_key=settings.openrouter_api_key,
+            model=settings.openrouter_model,
+            base_url=settings.openrouter_base_url,
+            timeout_seconds=timeout,
+        )
+    if name == "openai":
+        return lambda: OpenAICompatibleProvider(
+            name="openai",
+            api_key=settings.openai_api_key,
+            model=settings.openai_model,
+            base_url=settings.openai_base_url,
+            timeout_seconds=timeout,
+        )
+    if name == "ollama":
+        return lambda: OpenAICompatibleProvider(
+            name="ollama",
+            api_key="ollama",  # ignored by Ollama's server; the SDK just requires a non-empty string
+            model=settings.ollama_model,
+            base_url=settings.ollama_base_url,
+            timeout_seconds=timeout,
+            require_api_key=False,
+        )
+    if name == "anthropic":
+        return lambda: AnthropicProvider(
+            api_key=settings.anthropic_api_key,
+            model=settings.anthropic_model,
+            timeout_seconds=timeout,
+        )
+    raise ValueError(f"Unknown LLM provider {name!r}; expected one of {sorted(_KNOWN_PROVIDERS)}")
+
+
+def _resolve_chain_names(settings: Settings) -> list[str]:
+    configured = settings.llm_providers.strip().lower()
+    if configured == "auto":
+        has_key = {
+            "gemini": bool(settings.gemini_api_key),
+            "groq": bool(settings.groq_api_key),
+            "openrouter": bool(settings.openrouter_api_key),
+            "openai": bool(settings.openai_api_key),
+            "anthropic": bool(settings.anthropic_api_key),
+        }
+        names = [name for name in _AUTO_ORDER if has_key[name]]
+    else:
+        names = [name.strip() for name in configured.split(",") if name.strip()]
+
+    if "mock" not in names:
+        names.append("mock")  # guaranteed safety net -- see ProviderChain.generate()
+    return names
+
+
+def get_provider_chain(
+    settings: Settings | None = None,
+    *,
+    max_retries: int | None = None,
+    timeout_seconds: float | None = None,
+) -> ProviderChain:
+    """Builds the configured fallback chain (LLM_PROVIDERS) fresh from settings.
+
+    Not cached: settings can change between calls (tests monkeypatch env vars;
+    get_settings() itself re-reads .env every time), and constructing a provider is
+    cheap -- it's just wrapping config, not opening a connection.
+
+    `max_retries`/`timeout_seconds` override the configured defaults for this chain --
+    used by callers like the query rewriter that need to fail fast rather than inheriting
+    the main answer-generation call's full retry/timeout budget.
+    """
+    settings = settings or get_settings()
+    names = _resolve_chain_names(settings)
+    factories = [
+        (name, _provider_factory(name, settings, timeout_seconds=timeout_seconds)) for name in names
+    ]
+    return ProviderChain(
+        factories,
+        max_retries=max_retries if max_retries is not None else settings.llm_max_retries,
+        retry_base_delay=settings.llm_retry_base_delay,
     )
 
 
-def _anthropic_generate(system_prompt: str, user_prompt: str) -> LLMResult:
-    try:
-        import anthropic
-    except ImportError as exc:
-        raise RuntimeError("Install the Anthropic SDK first: python -m pip install anthropic") from exc
-
-    model_name = get_settings().llm_model
-    client = anthropic.Anthropic(timeout=get_settings().llm_timeout_seconds)
-    message = client.messages.create(
-        model=model_name,
-        max_tokens=800,
-        system=system_prompt,
-        messages=[{"role": "user", "content": user_prompt}],
+def _single_provider_chain(
+    provider: str,
+    settings: Settings,
+    *,
+    max_retries: int | None = None,
+    timeout_seconds: float | None = None,
+) -> ProviderChain:
+    """Used by callers (mainly tests) that want to force one specific provider. Still
+    goes through ProviderChain, and still falls back to mock if it fails, so behavior
+    stays consistent with the normal auto-resolved chain."""
+    factories = [
+        (provider, _provider_factory(provider, settings, timeout_seconds=timeout_seconds)),
+        ("mock", _provider_factory("mock", settings, timeout_seconds=timeout_seconds)),
+    ]
+    return ProviderChain(
+        factories,
+        max_retries=max_retries if max_retries is not None else settings.llm_max_retries,
+        retry_base_delay=settings.llm_retry_base_delay,
     )
-    text = "".join(block.text for block in message.content if getattr(block, "type", None) == "text")
-    return LLMResult(
-        text=text,
-        model_name=model_name,
-        tokens_in=message.usage.input_tokens,
-        tokens_out=message.usage.output_tokens,
-        # Pricing varies by model/tier and changes over time; left unestimated here rather
-        # than baking in a number that would silently go stale.
-        cost_estimate=None,
-        is_extractive_fallback=False,
-    )
-
-
-def _openai_generate(system_prompt: str, user_prompt: str) -> LLMResult:
-    try:
-        import openai
-    except ImportError as exc:
-        raise RuntimeError("Install the OpenAI SDK first: python -m pip install openai") from exc
-
-    model_name = get_settings().llm_model
-    client = openai.OpenAI(timeout=get_settings().llm_timeout_seconds)
-    completion = client.chat.completions.create(
-        model=model_name,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-    )
-    text = completion.choices[0].message.content or ""
-    usage = completion.usage
-    return LLMResult(
-        text=text,
-        model_name=model_name,
-        tokens_in=usage.prompt_tokens if usage else None,
-        tokens_out=usage.completion_tokens if usage else None,
-        cost_estimate=None,
-        is_extractive_fallback=False,
-    )
-
-
-_REAL_PROVIDERS = {
-    "anthropic": _anthropic_generate,
-    "openai": _openai_generate,
-}
 
 
 def generate(
@@ -100,34 +149,42 @@ def generate(
     *,
     fallback_text: str,
     provider: str | None = None,
+    max_retries: int | None = None,
+    timeout_seconds: float | None = None,
 ) -> LLMResult:
-    """Generate an answer via the configured LLM_PROVIDER.
+    """Generate an answer via the configured provider chain (LLM_PROVIDERS).
 
-    "mock" (the default) deterministically returns `fallback_text` so tests and offline
-    dev never need network access or API keys. Real providers are lazily imported and,
-    if they raise for any reason (missing SDK/key, network, rate limit), we log and fall
-    back to the extractive text rather than turning a demo question into a 500.
+    Tries each configured provider in order, retrying transient failures (rate limits,
+    timeouts, 5xxs) before moving to the next; always ends in the mock provider, which
+    deterministically returns `fallback_text` and cannot fail, so this function never
+    raises and a bad/missing API key never turns a demo question into a 500.
+
+    `provider` overrides the configured chain with exactly one named provider (plus the
+    same guaranteed mock fallback) -- mainly for tests that want to exercise a single
+    provider in isolation. `max_retries`/`timeout_seconds` override the configured
+    defaults for just this call -- see get_provider_chain().
     """
-    key = (provider or get_settings().llm_provider).lower()
-    if key == "mock":
-        return _mock_generate(system_prompt, user_prompt, fallback_text)
-
-    try:
-        handler = _REAL_PROVIDERS[key]
-    except KeyError:
-        raise ValueError(
-            f"Unknown LLM_PROVIDER {key!r}; expected one of {['mock', *sorted(_REAL_PROVIDERS)]}"
-        ) from None
-
-    try:
-        return handler(system_prompt, user_prompt)
-    except Exception:
-        logger.exception("LLM provider %r failed; falling back to extractive answer.", key)
-        return LLMResult(
-            text=fallback_text,
-            model_name=f"{key}-fallback-extractive",
-            tokens_in=_estimate_tokens(fallback_text),
-            tokens_out=_estimate_tokens(fallback_text),
-            cost_estimate=0.0,
-            is_extractive_fallback=True,
+    settings = get_settings()
+    chain = (
+        _single_provider_chain(
+            provider, settings, max_retries=max_retries, timeout_seconds=timeout_seconds
         )
+        if provider
+        else get_provider_chain(settings, max_retries=max_retries, timeout_seconds=timeout_seconds)
+    )
+    return chain.generate(system_prompt, user_prompt, fallback_text)
+
+
+def generate_stream(
+    system_prompt: str,
+    user_prompt: str,
+    *,
+    fallback_text: str,
+    provider: str | None = None,
+) -> Iterator[str]:
+    """Streaming counterpart to generate() -- same chain, same guaranteed fallback.
+    See ProviderChain.generate_stream() for how retries interact with an in-progress
+    stream (short version: only before the first chunk is yielded)."""
+    settings = get_settings()
+    chain = _single_provider_chain(provider, settings) if provider else get_provider_chain(settings)
+    yield from chain.generate_stream(system_prompt, user_prompt, fallback_text)

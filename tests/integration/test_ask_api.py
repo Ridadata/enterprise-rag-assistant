@@ -19,8 +19,37 @@ def test_ask_returns_grounded_answer_with_sources() -> None:
     assert payload["confidence"] in {"medium", "high"}
     assert payload["sources"]
     assert any("vpn" in source["title"].lower() for source in payload["sources"])
+    assert all(source["chunk_position"] >= 1 for source in payload["sources"])
     assert payload["latency_ms"] >= 0
     assert payload["model_name"] == "mock-grounded-answer"
+    # No history was sent, so the retrieval query is the question verbatim; the mock
+    # provider never produces real follow-up suggestions (see answer_generator.py).
+    assert payload["retrieval_query"] == "How do I troubleshoot VPN after MFA?"
+    assert payload["follow_up_questions"] == []
+
+
+def test_ask_accepts_conversation_history_for_follow_up_questions() -> None:
+    response = client.post(
+        "/ask",
+        json={
+            "question": "Is there an exception process?",
+            "history": [
+                {
+                    "question": "What is the VPN policy?",
+                    "answer": "All remote access requires MFA.",
+                }
+            ],
+        },
+        headers=AUTH_HEADERS,
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    # conftest.py pins LLM_PROVIDERS=mock, so rewriting always falls back to the raw
+    # question -- this asserts the history field round-trips through the API without
+    # erroring, not that a real rewrite happened (see tests/unit/test_query_rewriter.py
+    # for that, with a fake real provider).
+    assert payload["retrieval_query"] == "Is there an exception process?"
 
 
 def test_ask_returns_i_do_not_know_when_context_is_missing(monkeypatch) -> None:

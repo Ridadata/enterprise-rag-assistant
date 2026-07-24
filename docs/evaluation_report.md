@@ -55,8 +55,9 @@ for steady-state request latency.
 
 Faithfulness, answer relevance, context precision/recall (in the RAGAS/LLM-judge sense),
 and hallucination rate are **not** measured here -- they require an LLM-as-judge, which is
-out of scope for this pass (`LLM_PROVIDER=mock` by default; see `generation/llm_client.py`
-for the provider switch). `evaluation/metrics.py` implements only the deterministic
+out of scope for this pass (`LLM_PROVIDERS=auto` resolves to the deterministic mock
+provider unless a real provider's API key is configured; see `generation/llm_client.py`
+and `generation/providers/`). `evaluation/metrics.py` implements only the deterministic
 metrics (hit rate, precision/recall@k, IDK correctness, latency) that don't require a
 judge model, per the scoping decision recorded when the harness was built. Wiring in a
 real LLM provider and an LLM-judge pass would be the natural next step for a fuller

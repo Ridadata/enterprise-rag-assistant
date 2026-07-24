@@ -55,7 +55,7 @@ class _FakePsycopg:
 
 def test_retrieve_postgres_chunks_maps_rows_to_retrieved_chunks(monkeypatch) -> None:
     fake_rows = [
-        ("doc-1::0", "doc-1", "VPN Runbook", "runbook", "VPN troubleshooting content", 0.8123),
+        ("doc-1::0", "doc-1", "VPN Runbook", "runbook", "VPN troubleshooting content", 0, 0.8123),
     ]
     fake_psycopg = _FakePsycopg(rows=fake_rows)
     monkeypatch.setattr(pvs, "_import_psycopg", lambda: fake_psycopg)
@@ -75,6 +75,7 @@ def test_retrieve_postgres_chunks_maps_rows_to_retrieved_chunks(monkeypatch) -> 
     assert chunk.title == "VPN Runbook"
     assert chunk.source_type == "runbook"
     assert chunk.content == "VPN troubleshooting content"
+    assert chunk.chunk_index == 0
     assert chunk.score == 0.8123
 
 

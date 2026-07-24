@@ -4,6 +4,7 @@ import time
 from api.schemas.qa import AskRequest, AskResponse
 from database.settings import get_psycopg_dsn
 from generation.answer_generator import GenerationUsage, generate_grounded_answer
+from generation.query_rewriter import rewrite_query
 from retrieval.vector_search import RetrievedChunk, retrieve_relevant_chunks
 
 
@@ -88,10 +89,20 @@ def _log_query_and_answer(
 
 def answer_question(request: AskRequest) -> AskResponse:
     start = time.perf_counter()
-    chunks = retrieve_relevant_chunks(request.question, filters=request.filters)
-    response, usage = generate_grounded_answer(question=request.question, chunks=chunks)
+
+    # History-aware retrieval: a follow-up like "is there a workaround" only retrieves
+    # the right documents if it's first condensed against prior turns into a standalone
+    # query (see generation/query_rewriter.py) -- the raw follow-up alone would search on
+    # "workaround" with no idea what it's a workaround *for*. Generation still sees the
+    # user's original wording (via `request.question`/`request.history`) so the answer
+    # reads naturally rather than as a reply to the rewritten query.
+    rewrite = rewrite_query(request.question, request.history)
+    chunks = retrieve_relevant_chunks(rewrite.query, filters=request.filters)
+    response, usage = generate_grounded_answer(
+        question=request.question, chunks=chunks, history=request.history
+    )
     latency_ms = int((time.perf_counter() - start) * 1000)
 
     _log_query_and_answer(request, chunks, response, usage, latency_ms)
 
-    return response.model_copy(update={"latency_ms": latency_ms})
+    return response.model_copy(update={"latency_ms": latency_ms, "retrieval_query": rewrite.query})

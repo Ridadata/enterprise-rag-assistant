@@ -16,11 +16,21 @@ dependencies = [
     "psycopg[binary]>=3.2.0",
     "sqlalchemy>=2.0.0",
     "pgvector>=0.3.0",
+    # Cover the default free-tier LLM_PROVIDERS chain (generation/llm_client.py):
+    # google-genai for Gemini, openai for the OpenAI-wire-compatible providers (OpenAI
+    # itself, Groq, OpenRouter, and a local Ollama server all reuse the same client).
+    "google-genai>=0.3.0",
+    "openai>=1.50.0",
 ]
 
 [project.optional-dependencies]
 embeddings = [
     "sentence-transformers>=3.0.0",
+]
+# Anthropic is a supported LLM_PROVIDERS entry but isn't part of the default free-tier
+# chain, so it's opt-in rather than a hard dependency.
+anthropic = [
+    "anthropic>=0.35.0",
 ]
 dev = [
     "pytest>=8.3.0",

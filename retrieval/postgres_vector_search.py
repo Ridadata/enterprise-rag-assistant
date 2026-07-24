@@ -67,7 +67,7 @@ def retrieve_postgres_chunks(
             # LIMIT, so min_score can't cause a query to return fewer/worse rows than
             # top_k allows.
             sql = f"""
-                SELECT chunk_id, document_id, title, source_type, content, hybrid_score
+                SELECT chunk_id, document_id, title, source_type, content, chunk_index, hybrid_score
                 FROM (
                     SELECT
                         c.chunk_id,
@@ -75,6 +75,7 @@ def retrieve_postgres_chunks(
                         d.title,
                         d.source_type,
                         c.content,
+                        c.chunk_index,
                         (
                             0.75 * ((1 - (e.embedding <=> %s::vector)) + 1) / 2
                             + 0.25 * LEAST(ts_rank_cd(c.search_vector, plainto_tsquery('english', %s)), 1.0)
@@ -106,6 +107,7 @@ def retrieve_postgres_chunks(
                     title,
                     source_type,
                     content,
+                    chunk_index,
                     hybrid_score,
                 ) in cursor.fetchall():
                     chunks.append(
@@ -116,6 +118,7 @@ def retrieve_postgres_chunks(
                             content=content,
                             score=round(float(hybrid_score), 4),
                             source_type=source_type,
+                            chunk_index=chunk_index,
                         )
                     )
     except Exception:

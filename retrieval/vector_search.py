@@ -60,6 +60,8 @@ class RetrievedChunk:
     content: str
     score: float
     source_type: str = ""
+    # 0-based position of this chunk within its source document.
+    chunk_index: int = 0
 
 
 def _tokens(text: str) -> set[str]:
@@ -131,8 +133,49 @@ def retrieve_relevant_chunks(
     document_path: Path = DEFAULT_DOCUMENT_PATH,
     min_score: float | None = None,
 ) -> list[RetrievedChunk]:
-    """Retrieve chunks using the configured backend, with local JSONL as the stable fallback."""
-    min_score = min_score if min_score is not None else get_settings().min_retrieval_score
+    """Retrieve chunks using the configured backend, with local JSONL as the stable
+    fallback, then rerank (see retrieval/reranker.py) if enabled.
+
+    `question` should already be the history-aware, standalone form of a follow-up (see
+    generation/query_rewriter.py) -- this function only does first-stage retrieval plus
+    reranking, it has no notion of conversation history itself.
+    """
+    settings = get_settings()
+    min_score = min_score if min_score is not None else settings.min_retrieval_score
+
+    # Over-fetch when reranking so it has a real pool to re-sort rather than just
+    # confirming the first-stage order.
+    fetch_k = max(top_k, settings.rerank_candidate_pool) if settings.rerank_enabled else top_k
+
+    candidates = _retrieve_candidates(
+        question,
+        filters=filters,
+        top_k=fetch_k,
+        document_path=document_path,
+        min_score=min_score,
+    )
+
+    if not settings.rerank_enabled:
+        return candidates[:top_k]
+
+    from retrieval.reranker import rerank_chunks
+
+    return rerank_chunks(
+        question,
+        candidates,
+        top_k=top_k,
+        model_name=settings.rerank_model,
+        min_score=settings.rerank_min_score,
+    )
+
+
+def _retrieve_candidates(
+    question: str,
+    filters: dict[str, str | list[str]] | None,
+    top_k: int,
+    document_path: Path,
+    min_score: float,
+) -> list[RetrievedChunk]:
     backend = get_settings().rag_retrieval_backend.lower()
     if backend in {"postgres", "auto"}:
         try:
@@ -192,6 +235,7 @@ def retrieve_local_chunks(
                     content=chunk.content,
                     score=round(score, 4),
                     source_type=document["source_type"],
+                    chunk_index=chunk.chunk_index,
                 )
             )
 

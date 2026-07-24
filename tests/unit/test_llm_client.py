@@ -1,9 +1,8 @@
-import sys
-import types
-
 import pytest
 
 from generation import llm_client
+from generation.llm_client import _resolve_chain_names
+from database.settings import get_settings
 
 
 def test_mock_provider_echoes_fallback_text_deterministically() -> None:
@@ -18,62 +17,74 @@ def test_mock_provider_echoes_fallback_text_deterministically() -> None:
 
 
 def test_unknown_provider_raises_value_error() -> None:
-    with pytest.raises(ValueError, match="Unknown LLM_PROVIDER"):
+    with pytest.raises(ValueError, match="Unknown LLM provider"):
         llm_client.generate("system", "user", fallback_text="fallback", provider="not-a-real-provider")
 
 
-def test_anthropic_provider_success_passes_configured_timeout(monkeypatch) -> None:
-    captured = {}
+def test_generate_falls_back_to_mock_when_no_providers_are_configured() -> None:
+    # conftest.py's autouse fixture already clears every provider API key and pins
+    # LLM_PROVIDERS=mock, so this exercises the same zero-config path a fresh install
+    # would hit before any key is ever added.
+    result = llm_client.generate("system", "user", fallback_text="the fallback")
 
-    class _FakeMessage:
-        content = [types.SimpleNamespace(type="text", text="Real answer from Claude.")]
-        usage = types.SimpleNamespace(input_tokens=120, output_tokens=40)
-
-    class _FakeAnthropicClient:
-        def __init__(self, timeout=None):
-            captured["timeout"] = timeout
-            self.messages = types.SimpleNamespace(create=lambda **kwargs: _FakeMessage())
-
-    fake_module = types.ModuleType("anthropic")
-    fake_module.Anthropic = _FakeAnthropicClient
-    monkeypatch.setitem(sys.modules, "anthropic", fake_module)
-    monkeypatch.setenv("LLM_TIMEOUT_SECONDS", "12.5")
-    monkeypatch.setenv("LLM_MODEL", "claude-fake")
-
-    result = llm_client.generate("system", "user", fallback_text="fallback", provider="anthropic")
-
-    assert result.text == "Real answer from Claude."
-    assert result.is_extractive_fallback is False
-    assert result.tokens_in == 120
-    assert result.tokens_out == 40
-    assert captured["timeout"] == 12.5
-
-
-def test_real_provider_failure_falls_back_to_extractive_text(monkeypatch) -> None:
-    class _FakeAnthropicClient:
-        def __init__(self, timeout=None):
-            self.messages = types.SimpleNamespace(create=self._raise)
-
-        @staticmethod
-        def _raise(**kwargs):
-            raise TimeoutError("request timed out")
-
-    fake_module = types.ModuleType("anthropic")
-    fake_module.Anthropic = _FakeAnthropicClient
-    monkeypatch.setitem(sys.modules, "anthropic", fake_module)
-
-    result = llm_client.generate("system", "user", fallback_text="fallback answer", provider="anthropic")
-
-    assert result.text == "fallback answer"
+    assert result.text == "the fallback"
     assert result.is_extractive_fallback is True
-    assert result.cost_estimate == 0.0
-    assert result.model_name == "anthropic-fallback-extractive"
 
 
-def test_missing_sdk_falls_back_to_extractive_text(monkeypatch) -> None:
-    monkeypatch.setitem(sys.modules, "openai", None)  # simulates the package not being installed
+def test_generate_stream_falls_back_to_mock_when_no_providers_are_configured() -> None:
+    chunks = list(llm_client.generate_stream("system", "user", fallback_text="the fallback"))
 
-    result = llm_client.generate("system", "user", fallback_text="fallback answer", provider="openai")
+    assert chunks == ["the fallback"]
 
-    assert result.text == "fallback answer"
-    assert result.is_extractive_fallback is True
+
+def test_auto_resolution_includes_only_providers_with_a_configured_key(monkeypatch) -> None:
+    monkeypatch.setenv("LLM_PROVIDERS", "auto")
+    monkeypatch.setenv("GROQ_API_KEY", "fake-groq-key")
+    # GEMINI_API_KEY stays cleared by the autouse fixture.
+
+    names = _resolve_chain_names(get_settings())
+
+    assert names == ["groq", "mock"]
+
+
+def test_auto_resolution_prefers_gemini_over_groq_when_both_configured(monkeypatch) -> None:
+    monkeypatch.setenv("LLM_PROVIDERS", "auto")
+    monkeypatch.setenv("GEMINI_API_KEY", "fake-gemini-key")
+    monkeypatch.setenv("GROQ_API_KEY", "fake-groq-key")
+
+    names = _resolve_chain_names(get_settings())
+
+    assert names == ["gemini", "groq", "mock"]
+
+
+def test_auto_resolution_falls_back_to_just_mock_when_nothing_configured() -> None:
+    names = _resolve_chain_names(get_settings())
+
+    assert names == ["mock"]
+
+
+def test_explicit_chain_overrides_auto_order(monkeypatch) -> None:
+    monkeypatch.setenv("LLM_PROVIDERS", "groq,gemini")
+    monkeypatch.setenv("GEMINI_API_KEY", "fake-gemini-key")
+    monkeypatch.setenv("GROQ_API_KEY", "fake-groq-key")
+
+    names = _resolve_chain_names(get_settings())
+
+    assert names == ["groq", "gemini", "mock"]
+
+
+def test_mock_is_always_appended_even_if_omitted(monkeypatch) -> None:
+    monkeypatch.setenv("LLM_PROVIDERS", "gemini")
+
+    names = _resolve_chain_names(get_settings())
+
+    assert names[-1] == "mock"
+
+
+def test_ollama_is_never_auto_activated(monkeypatch) -> None:
+    monkeypatch.setenv("LLM_PROVIDERS", "auto")
+    # Ollama has no API key setting to check "is this configured?" against, so "auto"
+    # must never include it -- only an explicit LLM_PROVIDERS=ollama,... opts in.
+    names = _resolve_chain_names(get_settings())
+
+    assert "ollama" not in names
