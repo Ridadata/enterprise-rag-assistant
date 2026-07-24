@@ -128,7 +128,11 @@ in your actual knowledge base, and never fabricates a citation:
 
 <video src="docs/nexus_demo.mp4" controls width="720">
   Your browser doesn't support inline video — download it directly:
-  <a href="docs/nexus_demo.mp4">docs/nexus_demo.mp4</a>
+  <a href="docs/nexus_
+
+https://github.com/user-attachments/assets/18bb4971-37ef-41e1-a349-2be476f100b1
+
+demo.mp4">docs/nexus_demo.mp4</a>
 </video>
 
 </div>
