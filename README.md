@@ -1,3 +1,5 @@
+<img src="images/nexus_logo.png" alt="Nexus" width="360" />
+
 # Nexus
 
 Grounded, citation-backed question answering over an organization's internal knowledge base.
