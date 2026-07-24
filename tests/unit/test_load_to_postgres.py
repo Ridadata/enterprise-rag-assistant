@@ -5,8 +5,9 @@ from ingestion.pipelines import load_to_postgres as ltp
 
 
 class _FakeCursor:
-    def __init__(self, log: list[tuple[str, tuple]]) -> None:
+    def __init__(self, log: list[tuple[str, tuple]], fetch_queue: list[list[tuple]]) -> None:
         self._log = log
+        self._fetch_queue = fetch_queue
 
     def __enter__(self) -> "_FakeCursor":
         return self
@@ -17,12 +18,23 @@ class _FakeCursor:
     def execute(self, sql: str, params: tuple = ()) -> None:
         self._log.append((" ".join(sql.split()), params))
 
+    def fetchall(self) -> list[tuple]:
+        # Existing tests never populate fetch_queue, so this returns [] for them --
+        # meaning "nothing already ingested," which is exactly the fresh-database
+        # assumption those tests were already written against.
+        if self._fetch_queue:
+            return self._fetch_queue.pop(0)
+        return []
+
 
 class _FakeConnection:
-    def __init__(self) -> None:
+    def __init__(self, fetch_queue: list[list[tuple]] | None = None) -> None:
         self.log: list[tuple[str, tuple]] = []
         self.commits = 0
         self.rollbacks = 0
+        # Queued in call order: the first fetchall() gets fetch_queue[0], etc. -- see
+        # _existing_document_checksums()/_document_ids_with_embeddings() call order.
+        self.fetch_queue: list[list[tuple]] = list(fetch_queue) if fetch_queue else []
 
     def __enter__(self) -> "_FakeConnection":
         return self
@@ -31,7 +43,7 @@ class _FakeConnection:
         return False
 
     def cursor(self) -> _FakeCursor:
-        return _FakeCursor(self.log)
+        return _FakeCursor(self.log, self.fetch_queue)
 
     def commit(self) -> None:
         self.commits += 1
@@ -178,3 +190,85 @@ def test_load_jsonl_to_postgres_one_bad_document_does_not_block_others(monkeypat
     assert result["document_count"] == 2
     assert len(result["failed_documents"]) == 1
     assert connection.commits == 2
+
+
+def test_load_jsonl_to_postgres_skips_unchanged_document_with_existing_embeddings(
+    monkeypatch, tmp_path
+) -> None:
+    document = _document("doc-1")
+    checksum = ltp.document_checksum(document)
+    # First fetchall() -> existing checksums; second -> document_ids with embeddings
+    # under the current model. Both say "doc-1 is already fully ingested."
+    connection = _FakeConnection(fetch_queue=[[("doc-1", checksum)], [("doc-1",)]])
+    _patch_psycopg(monkeypatch, connection)
+    source_path = _write_jsonl(tmp_path, [document])
+
+    result = ltp.load_jsonl_to_postgres(source_path, database_url="postgresql://fake")
+
+    assert result["document_count"] == 1
+    assert result["unchanged_document_ids"] == ["doc-1"]
+    assert result["chunk_count"] == 0
+    statements = [sql for sql, _params in connection.log]
+    assert not any(sql.startswith(("DELETE FROM chunks", "INSERT INTO chunks", "INSERT INTO embeddings")) for sql in statements)
+    assert connection.commits == 0
+
+
+def test_load_jsonl_to_postgres_reprocesses_document_when_checksum_changed(
+    monkeypatch, tmp_path
+) -> None:
+    document = _document("doc-1", content="Updated content since last ingestion.")
+    # Stored checksum belongs to a different (older) version of the content.
+    stale_checksum = ltp.document_checksum(_document("doc-1", content="Old content."))
+    connection = _FakeConnection(fetch_queue=[[("doc-1", stale_checksum)], [("doc-1",)]])
+    _patch_psycopg(monkeypatch, connection)
+    source_path = _write_jsonl(tmp_path, [document])
+
+    result = ltp.load_jsonl_to_postgres(source_path, database_url="postgresql://fake")
+
+    assert result["document_count"] == 1
+    assert result["unchanged_document_ids"] == []
+    assert result["chunk_count"] > 0
+    assert connection.commits == 1
+    statements = [sql for sql, _params in connection.log]
+    assert any(sql.startswith("INSERT INTO chunks") for sql in statements)
+
+
+def test_load_jsonl_to_postgres_reprocesses_document_when_embedding_model_changed(
+    monkeypatch, tmp_path
+) -> None:
+    document = _document("doc-1")
+    checksum = ltp.document_checksum(document)
+    # Checksum matches, but doc-1 has no embeddings under the *current* model (e.g. the
+    # configured embedding model changed since it was last ingested) -- second
+    # fetchall() (already-embedded document_ids) comes back empty for it.
+    connection = _FakeConnection(fetch_queue=[[("doc-1", checksum)], []])
+    _patch_psycopg(monkeypatch, connection)
+    source_path = _write_jsonl(tmp_path, [document])
+
+    result = ltp.load_jsonl_to_postgres(source_path, database_url="postgresql://fake")
+
+    assert result["document_count"] == 1
+    assert result["unchanged_document_ids"] == []
+    assert result["chunk_count"] > 0
+    assert connection.commits == 1
+
+
+def test_load_jsonl_to_postgres_only_reprocesses_the_changed_document(monkeypatch, tmp_path) -> None:
+    unchanged = _document("doc-1")
+    changed = _document("doc-2", content="New content for doc-2.")
+    unchanged_checksum = ltp.document_checksum(unchanged)
+    stale_checksum_for_doc2 = ltp.document_checksum(_document("doc-2", content="Old content."))
+    connection = _FakeConnection(
+        fetch_queue=[
+            [("doc-1", unchanged_checksum), ("doc-2", stale_checksum_for_doc2)],
+            [("doc-1",), ("doc-2",)],
+        ]
+    )
+    _patch_psycopg(monkeypatch, connection)
+    source_path = _write_jsonl(tmp_path, [unchanged, changed])
+
+    result = ltp.load_jsonl_to_postgres(source_path, database_url="postgresql://fake")
+
+    assert result["document_count"] == 2
+    assert result["unchanged_document_ids"] == ["doc-1"]
+    assert connection.commits == 1  # only doc-2 was actually written

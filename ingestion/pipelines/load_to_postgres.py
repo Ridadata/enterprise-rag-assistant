@@ -40,6 +40,24 @@ def reset_ingested_data(database_url: str) -> None:
             cursor.execute("TRUNCATE documents RESTART IDENTITY CASCADE")
 
 
+def _existing_document_checksums(cursor) -> dict[str, str]:
+    cursor.execute("SELECT document_id, checksum FROM documents")
+    return dict(cursor.fetchall())
+
+
+def _document_ids_with_embeddings(cursor, model_name: str) -> set[str]:
+    cursor.execute(
+        """
+        SELECT DISTINCT c.document_id
+        FROM chunks c
+        JOIN embeddings e ON e.chunk_id = c.chunk_id
+        WHERE e.model_name = %s
+        """,
+        (model_name,),
+    )
+    return {document_id for (document_id,) in cursor.fetchall()}
+
+
 def _upsert_document(cursor, document: dict[str, Any], source_path: Path, checksum: str) -> None:
     cursor.execute(
         """
@@ -153,6 +171,16 @@ def load_jsonl_to_postgres(
     duplicate document is logged and skipped rather than aborting (or silently
     corrupting) the whole batch, and documents already committed before a later failure
     stay committed.
+
+    A document is skipped entirely -- no chunking, no embedding, no write of any kind --
+    when its content checksum matches what's already stored *and* it already has
+    embeddings under the currently configured model, since re-running this script would
+    otherwise redo the most expensive work (re-chunking and re-embedding every
+    document) unconditionally on every invocation regardless of whether anything
+    actually changed. Only new documents, documents whose content changed, or documents
+    never embedded under the current model do real work. --reset bypasses this
+    naturally: it truncates everything first, so there's nothing left to compare
+    against and every document is treated as new.
     """
     database_url = database_url or get_psycopg_dsn()
     provider = get_embedding_provider(embedding_provider)
@@ -165,9 +193,14 @@ def load_jsonl_to_postgres(
     chunk_count = 0
     seen_document_ids: set[str] = set()
     duplicate_document_ids: list[str] = []
+    unchanged_document_ids: list[str] = []
     failed_documents: list[dict[str, str]] = []
 
     with psycopg.connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            existing_checksums = _existing_document_checksums(cursor)
+            already_embedded = _document_ids_with_embeddings(cursor, provider.model_name)
+
         for document in load_jsonl(source_path):
             try:
                 validate_document(document)
@@ -187,8 +220,13 @@ def load_jsonl_to_postgres(
                 continue
             seen_document_ids.add(document_id)
 
+            checksum = document_checksum(document)
+            if existing_checksums.get(document_id) == checksum and document_id in already_embedded:
+                unchanged_document_ids.append(document_id)
+                document_count += 1
+                continue
+
             try:
-                checksum = document_checksum(document)
                 with connection.cursor() as cursor:
                     _upsert_document(cursor, document, source_path, checksum)
                     chunk_count += _replace_chunks_and_embeddings(cursor, Jsonb, document, checksum, provider)
@@ -206,6 +244,7 @@ def load_jsonl_to_postgres(
         "chunk_count": chunk_count,
         "embedding_model": provider.model_name,
         "duplicate_document_ids": duplicate_document_ids,
+        "unchanged_document_ids": unchanged_document_ids,
         "failed_documents": failed_documents,
     }
 
