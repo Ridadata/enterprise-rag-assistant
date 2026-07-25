@@ -44,7 +44,6 @@ corpus. Both fallbacks are real, tested code paths, not aspirational.
 - [Performance & evaluation](#performance--evaluation)
 - [Testing & code quality](#testing--code-quality)
 - [Security](#security)
-- [Roadmap](#roadmap)
 - [Troubleshooting](#troubleshooting)
 - [Contributing](#contributing)
 - [Acknowledgements](#acknowledgements)
@@ -496,25 +495,7 @@ it doesn't have.
 - Rate limiting or a WAF in front of the API — put a reverse proxy in front of it for anything
   internet-facing.
 - An audit log of who asked what, beyond the optional free-text `user_id` label sent by the
-  client. See [Roadmap](#roadmap) for real per-user auth.
-
-## Roadmap
-
-Deliberately out of scope today, tracked in [`project_plan.md`](project_plan.md) and
-[`docs/architecture.md`](docs/architecture.md):
-
-- [ ] Feedback capture — the `feedback` table exists in the schema; nothing writes to it yet.
-- [ ] LLM-judge evaluation — automated faithfulness/hallucination scoring on top of the
-      existing retrieval-quality harness.
-- [ ] Persisted conversation history — history is currently client-sent per request
-      (`ConversationTurn` in `api/schemas/qa.py`), not stored or resumable server-side.
-- [ ] Document viewer with chunk highlighting (needs a document-content endpoint).
-- [ ] Knowledge collections / tagging and a browsable document list.
-- [ ] Bookmarks for saved answers.
-- [ ] Real per-user auth (roles/accounts) to replace the shared-key model.
-- [ ] Incident / CVE / document-comparison assistant modes.
-- [ ] Token-streaming `/ask` endpoint — `generate_stream()` already exists on every LLM
-      provider and the chain itself; nothing calls it yet.
+  client.
 
 ## Troubleshooting
 
